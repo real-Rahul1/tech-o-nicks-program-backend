@@ -34,7 +34,7 @@ app.set('trust proxy', 1);
 const isDev = process.env.NODE_ENV === 'development';
 
 const allowedOrigins = [
-  'https://googlestudentsprogram.netlify.app',
+  'https://tech-o-nicks-program.netlify.app/',
   'http://localhost:5500',
   'http://127.0.0.1:5500',
   'http://localhost:3000',
