@@ -87,7 +87,7 @@ const requireStudent = (req, res, next) => {
 // ── AUTH ──
 app.post('/api/admin/login', (req, res) => {
   const { password } = req.body;
-  if (password === (process.env.ADMIN_PASSWORD || 'admin123')) {
+  if (password === (process.env.ADMIN_PASSWORD)) {
     req.session.isAdmin = true;
     res.json({ success: true });
   } else {
