@@ -4,7 +4,8 @@ const sessionSchema = new mongoose.Schema({
   title:       { type: String, required: true, trim: true },
   description: { type: String, required: true },
   speaker:     { type: String, required: true },
-  date:        { type: Date,   required: true },
+  date:        { type: Date,   required: true }, // start date
+  endDate:     { type: Date }, // optional — set when the session spans multiple dates
   time:        { type: String, required: true },
   duration:    { type: Number, required: true },
   venue:       { type: String, required: true },

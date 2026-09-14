@@ -151,7 +151,7 @@ app.get('/api/admin/sessions', requireAdmin, async (req, res) => {
 
 app.post('/api/admin/sessions', requireAdmin, async (req, res) => {
   try {
-    const { title, description, speaker, date, time, duration, venue, meetLink, image, tags, maxCapacity } = req.body;
+    const { title, description, speaker, date, endDate, time, duration, venue, meetLink, image, tags, maxCapacity } = req.body;
     // Reject sessions with a past date
     const sessionDate = new Date(date);
     const todayStart = new Date();
@@ -159,9 +159,18 @@ app.post('/api/admin/sessions', requireAdmin, async (req, res) => {
     if (sessionDate < todayStart) {
       return res.status(400).json({ error: 'Session date cannot be in the past.' });
     }
+    // If the session spans multiple dates, validate the end date
+    let parsedEndDate;
+    if (endDate) {
+      parsedEndDate = new Date(endDate);
+      if (parsedEndDate < sessionDate) {
+        return res.status(400).json({ error: 'End date cannot be before the start date.' });
+      }
+    }
     const sess = new Session({
       title, description, speaker,
       date: new Date(date),
+      endDate: parsedEndDate,
       time,
       duration: parseInt(duration, 10),
       venue, meetLink, image,
@@ -175,11 +184,22 @@ app.post('/api/admin/sessions', requireAdmin, async (req, res) => {
 
 app.put('/api/admin/sessions/:id', requireAdmin, async (req, res) => {
   try {
-    const { tags, date, duration, maxCapacity, ...rest } = req.body;
+    const { tags, date, endDate, duration, maxCapacity, ...rest } = req.body;
     if (tags !== undefined) rest.tags = tags.split(',').map(t => t.trim()).filter(Boolean);
     if (date) rest.date = new Date(date);
     if (duration) rest.duration = parseInt(duration, 10);
     if (maxCapacity) rest.maxCapacity = parseInt(maxCapacity, 10);
+    // endDate: a real value sets/updates it, an explicit empty string clears it
+    // back to a single-day session, and omitting it entirely leaves it untouched.
+    if (endDate) {
+      const startDate = rest.date || (await Session.findById(req.params.id))?.date;
+      if (startDate && new Date(endDate) < new Date(startDate)) {
+        return res.status(400).json({ error: 'End date cannot be before the start date.' });
+      }
+      rest.endDate = new Date(endDate);
+    } else if (endDate === '') {
+      rest.endDate = null;
+    }
     const sess = await Session.findByIdAndUpdate(req.params.id, rest, { new: true });
     res.json(sess);
   } catch (err) { res.status(400).json({ error: err.message }); }
