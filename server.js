@@ -42,7 +42,7 @@ const allowedOrigins = [
   'http://127.0.0.1:3000',
   'https://cgeccse.in',
   'https://cgeccse.in/techonicks-program',
-  'https://cgeccse.in/techonicks-program/'
+  'https://cgeccse.in/techonicks-program/index.html',
 ];
 
 app.use(cors({
