@@ -35,13 +35,10 @@ const isDev = process.env.NODE_ENV === 'development';
 
 const allowedOrigins = [
   'https://tech-o-nicks-program.netlify.app',
-  'http://localhost:5500',
-  'http://127.0.0.1:5500',
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
+  'https://cgeccse.in',
   'https://cgeccse.in/techonicks-program',
-  'https://cgeccse.in'
-];
+  'https://cgeccse.in/techonicks-program/index.html'
+  ];
 
 app.use(cors({
   origin: (origin, callback) => {
