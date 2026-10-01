@@ -6,6 +6,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const session = require('express-session');
 const MongoStore = require('connect-mongo');
+const { OAuth2Client } = require('google-auth-library');
 const { Session, Registration, CommunityMember } = require('./server/models');
 
 const app = express();
@@ -24,6 +25,40 @@ function verifyPassword(password, stored) {
   const a = Buffer.from(hash, 'hex');
   const b = Buffer.from(hashToCompare, 'hex');
   return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// ── GOOGLE SIGN-IN ──
+// The frontend gets a Google ID token (a signed JWT) after the user picks an
+// account. We verify its signature + audience here, so the email we trust
+// always comes from Google and can never be typed in or spoofed by the client.
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+async function verifyGoogleCredential(credential) {
+  if (!process.env.GOOGLE_CLIENT_ID) {
+    const e = new Error('Google sign-in is not configured on the server (missing GOOGLE_CLIENT_ID).');
+    e.status = 500;
+    throw e;
+  }
+  if (!credential || typeof credential !== 'string') {
+    const e = new Error('Please continue with your Google account first.');
+    e.status = 401;
+    throw e;
+  }
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID
+    });
+    const payload = ticket.getPayload();
+    if (!payload || !payload.email || !payload.email_verified) {
+      throw new Error('unverified email');
+    }
+    return { email: payload.email.trim().toLowerCase(), name: (payload.name || '').trim() };
+  } catch (err) {
+    const e = new Error('Google sign-in expired or invalid. Please continue with your email again.');
+    e.status = 401;
+    throw e;
+  }
 }
 
 app.set('trust proxy', 1);
@@ -101,6 +136,15 @@ app.post('/api/admin/logout', (req, res) => {
 
 app.get('/api/admin/status', (req, res) => {
   res.json({ isAdmin: !!req.session.isAdmin });
+});
+
+// Verifies a Google ID token and returns the trusted email + name so the
+// frontend can pre-fill (and lock) the email field.
+app.post('/api/auth/google/verify', async (req, res) => {
+  try {
+    const { email, name } = await verifyGoogleCredential(req.body.credential);
+    res.json({ email, name });
+  } catch (err) { res.status(err.status || 401).json({ error: err.message }); }
 });
 
 // ── SESSIONS (public) ──
@@ -224,19 +268,26 @@ app.patch('/api/admin/sessions/:id/toggle', requireAdmin, async (req, res) => {
 // ── SESSION REGISTRATIONS ──
 app.post('/api/register', async (req, res) => {
   try {
-    const { sessionId, fullName, email, phone, college, branch, year, googleAccountEmail, experience, motivation } = req.body;
+    const { sessionId, fullName, rollNumber, phone, college, branch, year, experience, motivation, googleCredential } = req.body;
+    // Email comes ONLY from the verified Google account — any email sent by the
+    // client is ignored.
+    const { email } = await verifyGoogleCredential(googleCredential);
+    const googleAccountEmail = email;
+    if (!rollNumber || !rollNumber.trim()) {
+      return res.status(400).json({ error: 'Roll number is required.' });
+    }
     const sess = await Session.findById(sessionId);
     if (!sess || !sess.isActive) return res.status(400).json({ error: 'Session not available' });
     const regCount = await Registration.countDocuments({ sessionId });
     if (regCount >= sess.maxCapacity) return res.status(400).json({ error: 'Session is full' });
     const existing = await Registration.findOne({ email, sessionId });
     if (existing) return res.status(400).json({ error: 'You are already registered for this session' });
-    const reg = new Registration({ sessionId, fullName, email, phone, college, branch, year, googleAccountEmail, experience, motivation });
+    const reg = new Registration({ sessionId, fullName, email, rollNumber, phone, college, branch, year, googleAccountEmail, experience, motivation });
     await reg.save();
     res.status(201).json({ success: true, registration: reg });
   } catch (err) {
     if (err.code === 11000) return res.status(400).json({ error: 'Already registered for this session' });
-    res.status(400).json({ error: err.message });
+    res.status(err.status || 400).json({ error: err.message });
   }
 });
 
@@ -258,7 +309,9 @@ app.delete('/api/admin/registrations/:id', requireAdmin, async (req, res) => {
 // ── COMMUNITY MEMBERS ──
 app.post('/api/community/join', async (req, res) => {
   try {
-    const { fullName, email, password, rollNumber, phone, college, branch, year, interests, experience, whyJoin } = req.body;
+    const { fullName, password, rollNumber, phone, college, branch, year, interests, experience, whyJoin, googleCredential } = req.body;
+    // Email comes ONLY from the verified Google account.
+    const { email } = await verifyGoogleCredential(googleCredential);
 
     if (!password || password.length < 6) {
       return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
@@ -288,7 +341,7 @@ app.post('/api/community/join', async (req, res) => {
       const field = err.keyPattern && err.keyPattern.rollNumber ? 'roll number' : 'email';
       return res.status(400).json({ error: `This ${field} is already registered in the community.` });
     }
-    res.status(400).json({ error: err.message });
+    res.status(err.status || 400).json({ error: err.message });
   }
 });
 
@@ -340,6 +393,7 @@ app.post('/api/student/register', requireStudent, async (req, res) => {
       sessionId,
       fullName: member.fullName,
       email: member.email,
+      rollNumber: member.rollNumber,
       phone: member.phone,
       college: member.college,
       branch: member.branch,
