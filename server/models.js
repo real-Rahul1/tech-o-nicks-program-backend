@@ -21,6 +21,7 @@ const registrationSchema = new mongoose.Schema({
   sessionId:          { type: mongoose.Schema.Types.ObjectId, ref: 'Session', required: true },
   fullName:           { type: String, required: true, trim: true },
   email:              { type: String, required: true, trim: true, lowercase: true },
+  rollNumber:         { type: String, trim: true, uppercase: true },
   phone:              { type: String, required: true },
   college:            { type: String, required: true },
   branch:             { type: String, required: true },
